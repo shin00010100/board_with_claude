@@ -21,7 +21,7 @@
 - 패키지 관리: uv (pip 사용 안한다)
 - SQLite : uv로 관리하고 격리한다.
 ## 격리 상태 확인
-- Python: `uv run which python` → `.venv/bin/python` 이어야 한다
+- Python: `uv run which python` → `.venv/` 내부 경로여야 한다 (macOS/Linux: `.venv/bin/python`, Windows: `.venv\Scripts\python.exe`)
 - Node: `mise current` → `.mise.toml`의 버전과 일치해야 한다
 ## DB 구조
 - SQLite 데이터 파일: data/board.db에 저장한다, 데이터 파일은 gitignore 에 등록하고 커밋하지 않는다.
@@ -33,23 +33,30 @@
 / : vite(5173)로 프록시 , /dist 를 사용하지 않는다.
 ### 운영
 / : Fronend/dist 를 사용한다.
+- Windows에서는 프로젝트 루트의 dev.ps1로 backend/frontend/nginx를 한 번에 start/stop/status/logs 할 수 있다 (`.\dev.ps1 start`, `.\dev.ps1 logs -Service backend` 등).
 ## 프로젝트 구조
+- dev.ps1 : backend/frontend/nginx 통합 실행 스크립트 (Windows, PowerShell)
+- nginx/dev.conf, nginx/prod.conf : Nginx 설정
 - Frontend/src/ : React 소스 (.tsx, .ts, .css)
+  - Frontend/src/pages/ : 라우트 단위 페이지 (BoardList, BoardDetail, BoardWrite, BoardEdit)
+  - Frontend/src/components/ : 페이지에 조립되는 하위 컴포넌트 (예: CommentSection)
 - Frontend/dist/ : 빌드된 React 정적 파일(HTML/JS/CSS) , 직접 수정 금지(npm run build로 재생성)
 - Frontend/package.json : 프론트 의존성, npm 명령은 Frontend/ 에서 실행한다.
-- Backend
-app/main.py : FastAPI 진입점
-app/routers/ : API 엔드포인트 (백엔드 관문)
-app/models/ : SQLAlchemy ORM 모델, DB 테이블 구조 정의
-app/schemas/ : Pydantic 데이터 모델 (유효성 검사). API 요청/응답 검증
-app/services/ : 비즈니스 로직
-app/repository/ : DB 세션을 통해 쿼리(Query)를 실행하는 계층, 모든 데이터 처리는 repository에서만 한다.
-app/database.py : DB관련 정의
-data/board.db : 게시판 데이터 저장
-tests/routers/
-tests/services/ 
-tests/repository/ 
-tests/conftest.py : pytest 공용 설정
+- Backend/ : 백엔드 소스 루트. Frontend/와 동일 레벨의 최상위 폴더이며, uv 명령은 Backend/ 에서 실행한다.
+Backend/app/main.py : FastAPI 진입점
+Backend/app/routers/ : API 엔드포인트 (백엔드 관문)
+Backend/app/models/ : SQLAlchemy ORM 모델, DB 테이블 구조 정의
+Backend/app/schemas/ : Pydantic 데이터 모델 (유효성 검사). API 요청/응답 검증
+Backend/app/services/ : 비즈니스 로직
+  Backend/app/services/security.py : 비밀번호 해싱/검증 공통 유틸
+  Backend/app/services/errors.py : 서비스 계층 공통 예외
+Backend/app/repository/ : DB 세션을 통해 쿼리(Query)를 실행하는 계층, 모든 데이터 처리는 repository에서만 한다.
+Backend/app/database.py : DB관련 정의
+Backend/data/board.db : 게시판 데이터 저장
+Backend/tests/routers/
+Backend/tests/services/ 
+Backend/tests/repository/ 
+Backend/tests/conftest.py : pytest 공용 설정
 ## 데이터 모델
 ### 게시판 데이터 구조 (모든 계층에서 동일하게 유지)
 | 필드 | 타입 | 제약 | 설명 |
@@ -57,12 +64,24 @@ tests/conftest.py : pytest 공용 설정
 | title | str | 필수, 1~100자 | 제목 |
 | content | str | 필수, 1자 이상 | 본문 |
 | author | str | 필수, 1~50자 | 작성자 |
+| password_hash | str | 필수 | 작성/수정/삭제 검증용 비밀번호 해시. 평문 저장 금지 |
 | view_count | int | 기본 0 | 조회수 |
 | created_at | datetime | 자동 생성 | 작성 시각 |
 | updated_at | datetime | 자동 갱신 | 수정 시각 |
 - id는 서버에서 UUID로 생성한다 (클라이언트가 지정하지 않는다).
 -created_at / updated_at은 서버가 관리한다 (요청 본문으로 받지 않는다).
 -updated_at은 수정 시각마다 갱신한다.
+-password_hash는 요청으로 받은 평문 비밀번호를 해시(예: hashlib.pbkdf2_hmac)해서 저장한다.
+
+### 댓글 데이터 구조
+| 필드 | 타입 | 제약 | 설명 |
+| id | str (UUID) | PK | 댓글 고유 ID |
+| post_id | str (UUID) | FK(posts.id), ON DELETE CASCADE | 게시글이 삭제되면 댓글도 함께 삭제 |
+| author | str | 필수, 1~50자 | 작성자 |
+| content | str | 필수, 1자 이상 | 댓글 내용 |
+| password_hash | str | 필수 | 삭제 검증용 비밀번호 해시. 평문 저장 금지 |
+| created_at | datetime | 자동 생성 | 작성 시각 |
+
 ## 핵심 기능 (API 단위)
 - 게시판 목록 조회
 - 특정 게시물 조회
@@ -70,6 +89,9 @@ tests/conftest.py : pytest 공용 설정
 - 게시글 수정, 삭제 기능 , 비밀번호가 일치해야 수정,삭제 가능 하다.
 - 10개의 게시글 마다 페이지 생성 한다.
 - 상용 수준의 게시판 디자인 추가 한다.
+- 댓글 작성시 비밀번호 필수 입력
+- 댓글 삭제 기능, 비밀번호가 일치해야 삭제 가능하다
+- 게시글이 삭제되면 그 게시글의 댓글도 함께 삭제된다
 ## 프로젝트 용어
 ## 요구사항
 - 모든 함수에 타입 힌트를 작성한다
@@ -88,6 +110,6 @@ tests/conftest.py : pytest 공용 설정
 ## 규칙
 - 현재 폴더에 가상환경을 만들고 활성화한후 개발 환경을 구성하고 가상환경 적정성을 확인후 개발 진행한다
 - 데이터는 data/board.db에 저장한다
-- 파일 읽기/쓰기는 storage.py에서만 처리한다 (다른 파일에서 직접 파일을 열지 않는다)
+- 별도 storage.py는 두지 않는다. DB(SQLite) 접근은 app/repository/에서만 처리하며, 파일 기반 I/O(예: 업로드)가 실제로 필요해지기 전까지는 이 규칙을 유지한다.
 - 하나의 작업 단위(기능 추가, 버그 수정)가 끝나면 커밋을 제안한다, 커밋 메시지는 한국어로 작성한다
 ## 모든 설명과 주석은 한국어로 작성한다
