@@ -23,18 +23,19 @@ board/
 │   └── prod.conf       # 운영용 (/ -> Frontend/dist, /api/ -> uvicorn)
 ├── Frontend/
 │   ├── src/
-│   │   ├── pages/       # BoardList, BoardDetail, BoardWrite, BoardEdit
+│   │   ├── pages/         # BoardList, BoardDetail, BoardWrite, BoardEdit
+│   │   ├── components/    # CommentSection 등 페이지 간 공유되지 않는 조립 컴포넌트
 │   │   ├── api/client.ts
 │   │   └── lib/format.ts
 │   └── dist/            # npm run build 산출물 (직접 수정 금지)
 ├── Backend/
 │   ├── app/
 │   │   ├── main.py        # FastAPI 진입점
-│   │   ├── database.py    # SQLAlchemy 엔진/세션
-│   │   ├── models/        # ORM 모델
+│   │   ├── database.py    # SQLAlchemy 엔진/세션, SQLite FK(PRAGMA) 설정
+│   │   ├── models/        # ORM 모델 (post, comment)
 │   │   ├── schemas/        # Pydantic 스키마
 │   │   ├── repository/     # DB 접근 (raw SQL / ORM 병기)
-│   │   ├── services/       # 비즈니스 로직 (비밀번호 해싱/검증 등)
+│   │   ├── services/       # 비즈니스 로직 + security.py(해싱)/errors.py(공통 예외)
 │   │   └── routers/        # API 엔드포인트
 │   ├── data/board.db      # SQLite 데이터 파일 (커밋 대상 아님)
 │   └── tests/              # pytest (routers / services / repository)
@@ -59,9 +60,13 @@ Backend/Frontend/Nginx 세 개를 매번 따로 띄우는 대신, 프로젝트 �
 .\dev.ps1 stop             # 세 서버 모두 종료
 .\dev.ps1 restart          # stop 후 start
 .\dev.ps1 start -Env prod  # 운영 모드 (vite 대신 Frontend/dist를 nginx가 직접 서빙)
+
+.\dev.ps1 logs                                # 전체 로그 마지막 부분 출력
+.\dev.ps1 logs -Service backend               # backend/frontend/nginx/nginx-access/nginx-error 중 선택
+.\dev.ps1 logs -Service nginx-error -Follow   # 실시간 tail (Ctrl+C로 종료)
 ```
 
-기동 후 브라우저는 `http://localhost:8080`으로 접속합니다. Backend/Frontend 로그는 `.run/backend.log`, `.run/frontend.log`에 쌓입니다.
+기동 후 브라우저는 `http://localhost:8080`으로 접속합니다. Backend/Frontend 로그는 `.run/backend.log`, `.run/frontend.log`에, Nginx 로그는 `logs/access.log`, `logs/error.log`에 쌓입니다.
 
 ## 개발 환경 실행 (수동)
 
@@ -115,10 +120,15 @@ uv run pytest
 | POST | `/posts` | 게시글 작성 | 필수 (본문에 포함) |
 | PUT | `/posts/{id}` | 게시글 수정 | 필수 (본문에 포함, 불일치 시 403) |
 | DELETE | `/posts/{id}` | 게시글 삭제 | 필수 (본문에 포함, 불일치 시 403) |
+| GET | `/posts/{post_id}/comments` | 댓글 목록 조회 | - |
+| POST | `/posts/{post_id}/comments` | 댓글 작성 | 필수 (본문에 포함) |
+| DELETE | `/posts/{post_id}/comments/{comment_id}` | 댓글 삭제 | 필수 (본문에 포함, 불일치 시 403) |
 
-비밀번호는 평문으로 저장하지 않고 `hashlib.pbkdf2_hmac` + 솔트로 해싱해 저장합니다.
+비밀번호는 평문으로 저장하지 않고 `hashlib.pbkdf2_hmac` + 솔트로 해싱해 저장합니다 (`app/services/security.py`, post/comment 공통).
 
 ## 데이터 모델
+
+**posts**
 
 | 필드 | 타입 | 설명 |
 | --- | --- | --- |
@@ -128,6 +138,18 @@ uv run pytest
 | author | str | 1~50자 |
 | view_count | int | 기본 0 |
 | created_at / updated_at | datetime | 서버가 관리 |
+
+**comments**
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| id | str (UUID) | 서버에서 생성 |
+| post_id | str (FK → posts.id) | `ON DELETE CASCADE` — 게시글 삭제 시 댓글도 함께 삭제됨 |
+| author | str | 1~50자 |
+| content | str | 1자 이상 |
+| created_at | datetime | 서버가 관리 |
+
+SQLite는 기본적으로 외래키 제약을 강제하지 않으므로, `database.py`에서 연결마다 `PRAGMA foreign_keys=ON`을 켜서 cascade 삭제가 실제로 동작하도록 했습니다.
 
 ## repository 계층 규칙
 

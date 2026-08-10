@@ -1,46 +1,31 @@
 """게시글 비즈니스 로직 계층. repository를 호출하며 DB 쿼리를 직접 실행하지 않는다."""
 
-import hashlib
-import hmac
-import os
-
 from sqlalchemy.orm import Session
 
 from app.models.post import Post
 from app.repository import post as post_repository
 from app.schemas.post import PostCreate, PostUpdate
+from app.services.errors import InvalidPasswordError
+from app.services.security import hash_password, verify_password
 
 PAGE_SIZE = 10
 
-_HASH_ALGORITHM = "sha256"
-_HASH_ITERATIONS = 260_000
+__all__ = [
+    "PAGE_SIZE",
+    "PostNotFoundError",
+    "InvalidPasswordError",
+    "hash_password",
+    "verify_password",
+    "get_post_list",
+    "get_post",
+    "create_post",
+    "update_post",
+    "delete_post",
+]
 
 
 class PostNotFoundError(Exception):
     """게시글을 찾을 수 없을 때 발생한다."""
-
-
-class InvalidPasswordError(Exception):
-    """비밀번호가 일치하지 않을 때 발생한다."""
-
-
-def hash_password(plain: str) -> str:
-    """비밀번호를 랜덤 솔트와 함께 해싱한다. 저장 형식: '<salt_hex>$<hash_hex>'."""
-    salt = os.urandom(16)
-    derived = hashlib.pbkdf2_hmac(_HASH_ALGORITHM, plain.encode("utf-8"), salt, _HASH_ITERATIONS)
-    return f"{salt.hex()}${derived.hex()}"
-
-
-def verify_password(plain: str, password_hash: str) -> bool:
-    """평문 비밀번호와 저장된 해시가 일치하는지 검증한다."""
-    try:
-        salt_hex, derived_hex = password_hash.split("$", 1)
-    except ValueError:
-        return False
-    salt = bytes.fromhex(salt_hex)
-    expected = bytes.fromhex(derived_hex)
-    candidate = hashlib.pbkdf2_hmac(_HASH_ALGORITHM, plain.encode("utf-8"), salt, _HASH_ITERATIONS)
-    return hmac.compare_digest(candidate, expected)
 
 
 def get_post_list(db: Session, page: int) -> tuple[list[Post], int]:

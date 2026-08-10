@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { deletePost, fetchPost, type Post } from "../api/client";
+import CommentSection from "../components/CommentSection";
 import { formatDateTime } from "../lib/format";
 
 export default function BoardDetail() {
@@ -125,6 +126,8 @@ export default function BoardDetail() {
         )}
         {deleteError !== null && <p className="mt-2 text-sm text-red-500">{deleteError}</p>}
       </div>
+
+      <CommentSection postId={post.id} />
     </div>
   );
 }

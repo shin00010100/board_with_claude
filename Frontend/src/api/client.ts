@@ -87,3 +87,35 @@ export function deletePost(id: string, password: string): Promise<void> {
     body: JSON.stringify({ password }),
   });
 }
+
+export interface Comment {
+  id: string;
+  post_id: string;
+  author: string;
+  content: string;
+  created_at: string;
+}
+
+export interface CommentCreateInput {
+  author: string;
+  content: string;
+  password: string;
+}
+
+export function fetchComments(postId: string): Promise<Comment[]> {
+  return request<Comment[]>(`/posts/${postId}/comments`);
+}
+
+export function createComment(postId: string, data: CommentCreateInput): Promise<Comment> {
+  return request<Comment>(`/posts/${postId}/comments`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteComment(postId: string, commentId: string, password: string): Promise<void> {
+  return request<void>(`/posts/${postId}/comments/${commentId}`, {
+    method: "DELETE",
+    body: JSON.stringify({ password }),
+  });
+}

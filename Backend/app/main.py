@@ -3,10 +3,10 @@
 from fastapi import FastAPI
 
 from app.database import Base, engine
-from app.routers import post
+from app.routers import comment, post
 
-# 이 시점에는 app.routers.post -> app.services.post -> app.models.post로
-# 이어지는 import 체인을 통해 Post 모델이 이미 Base.metadata에 등록되어 있다.
+# 이 시점에는 app.routers.post/comment -> app.services... -> app.models...로
+# 이어지는 import 체인을 통해 Post/Comment 모델이 이미 Base.metadata에 등록되어 있다.
 # 별도 마이그레이션 도구(Alembic 등) 없이 SQLite 파일에 테이블이 없으면 생성한다.
 Base.metadata.create_all(bind=engine)
 
@@ -18,6 +18,7 @@ app = FastAPI(title="게시판 API")
 # 교차 출처 요청을 보낼 일이 없다.
 
 app.include_router(post.router, prefix="/api")
+app.include_router(comment.router, prefix="/api")
 
 
 @app.get("/health")
