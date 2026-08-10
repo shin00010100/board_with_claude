@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    Backend(uvicorn) / Frontend(vite) / Nginx를 한 번에 기동·종료·상태체크한다.
+    Backend(uvicorn) / Frontend(vite) / Nginx를 한 번에 기동·종료·상태체크·로그확인한다.
 
 .USAGE
     .\dev.ps1 start            # 세 서버 모두 기동 (기본 dev 환경)
@@ -8,15 +8,26 @@
     .\dev.ps1 status           # 세 서버 상태 확인
     .\dev.ps1 restart          # stop 후 start
     .\dev.ps1 start -Env prod  # 운영 모드 (vite 대신 Frontend/dist를 nginx가 직접 서빙)
+
+    .\dev.ps1 logs                                # 전체 로그 마지막 부분 출력
+    .\dev.ps1 logs -Service backend               # 백엔드 로그만
+    .\dev.ps1 logs -Service nginx-error -Follow   # nginx 에러 로그 실시간 tail (Ctrl+C로 종료)
 #>
 
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("start", "stop", "status", "restart")]
+    [ValidateSet("start", "stop", "status", "restart", "logs")]
     [string]$Action,
 
     [ValidateSet("dev", "prod")]
-    [string]$Env = "dev"
+    [string]$Env = "dev",
+
+    [ValidateSet("all", "backend", "frontend", "nginx", "nginx-access", "nginx-error")]
+    [string]$Service = "all",
+
+    [switch]$Follow,
+
+    [int]$Tail = 40
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,6 +44,8 @@ $BackendPidFile = Join-Path $RunDir "backend.pid"
 $FrontendPidFile = Join-Path $RunDir "frontend.pid"
 $BackendLog = Join-Path $RunDir "backend.log"
 $FrontendLog = Join-Path $RunDir "frontend.log"
+$NginxAccessLog = Join-Path $ProjectRoot "logs\access.log"
+$NginxErrorLog = Join-Path $ProjectRoot "logs\error.log"
 
 $NginxConf = Join-Path $ProjectRoot "nginx\$Env.conf"
 
@@ -192,6 +205,54 @@ function Show-Status {
     Write-Host ("[nginx]    프로세스: {0,-10} 포트 8080: {1}" -f "$nginxCount 개", (Get-PortState 8080))
 }
 
+function Get-LogTargets([string]$Filter) {
+    $all = @(
+        [pscustomobject]@{ Label = "backend"; Path = $BackendLog }
+        [pscustomobject]@{ Label = "frontend"; Path = $FrontendLog }
+        [pscustomobject]@{ Label = "nginx-access"; Path = $NginxAccessLog }
+        [pscustomobject]@{ Label = "nginx-error"; Path = $NginxErrorLog }
+    )
+    switch ($Filter) {
+        "all" { return $all }
+        "nginx" { return $all | Where-Object { $_.Label -like "nginx-*" } }
+        default { return $all | Where-Object { $_.Label -eq $Filter } }
+    }
+}
+
+function Show-Logs {
+    $targets = @(Get-LogTargets $Service)
+    if ($targets.Count -eq 0) {
+        Write-Host "알 수 없는 서비스입니다: $Service"
+        return
+    }
+
+    if ($Follow) {
+        if ($targets.Count -gt 1) {
+            Write-Host "-Follow는 로그 하나만 대상으로 할 수 있습니다. -Service backend|frontend|nginx-access|nginx-error 중 하나를 지정하세요." -ForegroundColor Yellow
+            return
+        }
+        $t = $targets[0]
+        if (-not (Test-Path $t.Path)) {
+            Write-Host "[$($t.Label)] 로그 파일이 아직 없습니다: $($t.Path)"
+            return
+        }
+        Write-Host "===== $($t.Label) 실시간 출력 ($($t.Path), Ctrl+C로 종료) ====="
+        Get-Content -Path $t.Path -Wait -Tail $Tail
+        return
+    }
+
+    foreach ($t in $targets) {
+        Write-Host ""
+        Write-Host "===== $($t.Label) ($($t.Path)) =====" -ForegroundColor Cyan
+        if (Test-Path $t.Path) {
+            Get-Content -Path $t.Path -Tail $Tail
+        }
+        else {
+            Write-Host "(로그 파일 없음 — 서버가 dev.ps1로 기동된 적이 없을 수 있습니다)"
+        }
+    }
+}
+
 switch ($Action) {
     "start" {
         Start-Backend
@@ -214,5 +275,8 @@ switch ($Action) {
     }
     "status" {
         Show-Status
+    }
+    "logs" {
+        Show-Logs
     }
 }
