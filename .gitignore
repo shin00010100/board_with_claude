@@ -1,0 +1,33 @@
+# --- Python / Backend ---
+Backend/.venv/
+**/__pycache__/
+*.pyc
+Backend/.pytest_cache/
+.pytest_cache/
+Backend/data/*.db
+Backend/data/*.db-journal
+Backend/data/*.db-wal
+Backend/data/*.db-shm
+
+# --- Node / Frontend ---
+Frontend/node_modules/
+Frontend/dist/
+Frontend/.vite/
+Frontend/*.tsbuildinfo
+
+# --- Nginx ---
+# nginx -p <project-root>가 기본적으로 프로젝트 루트 밑에 요구하는 런타임 디렉터리.
+# 디렉터리 자체는 클론 직후에도 존재해야 하므로 .gitkeep만 추적하고 내용물은 무시한다.
+/logs/*.log
+/logs/*.pid
+/temp/*
+!/temp/.gitkeep
+
+# --- misc ---
+.env
+.env.local
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
