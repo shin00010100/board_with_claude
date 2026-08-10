@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { deletePost, fetchPost, type Post } from "../api/client";
 import { formatDateTime } from "../lib/format";
@@ -16,26 +16,31 @@ export default function BoardDetail() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // GET 조회가 서버에서 조회수를 증가시키는 부작용을 가지므로, StrictMode 개발
+  // 모드의 effect 이중 실행으로 같은 id에 대해 요청이 두 번 나가지 않도록 막는다.
+  // cleanup에서 값을 뒤집는 로컬 변수 대신 ref로 "가장 최근에 요청한 id"를
+  // 추적해, 실제로 나간 요청의 응답이 도착했을 때 그 값을 그대로 신뢰한다.
+  const requestedIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (id === undefined) return;
-    let cancelled = false;
+    if (requestedIdRef.current === id) return;
+    requestedIdRef.current = id;
+
     setLoading(true);
     setLoadError(null);
     fetchPost(id)
       .then((data) => {
-        if (!cancelled) setPost(data);
+        if (requestedIdRef.current === id) setPost(data);
       })
       .catch((err: unknown) => {
-        if (!cancelled) {
+        if (requestedIdRef.current === id) {
           setLoadError(err instanceof Error ? err.message : "게시글을 불러오지 못했습니다");
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (requestedIdRef.current === id) setLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
   }, [id]);
 
   async function handleDelete(): Promise<void> {

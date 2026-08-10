@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fetchPost, updatePost } from "../api/client";
 
@@ -15,27 +15,30 @@ export default function BoardEdit() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // GET 조회가 서버에서 조회수를 증가시키므로, StrictMode 개발 모드의 effect
+  // 이중 실행으로 같은 id에 대해 요청이 두 번 나가지 않도록 막는다.
+  const requestedIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (id === undefined) return;
-    let cancelled = false;
+    if (requestedIdRef.current === id) return;
+    requestedIdRef.current = id;
+
     fetchPost(id)
       .then((post) => {
-        if (cancelled) return;
+        if (requestedIdRef.current !== id) return;
         setTitle(post.title);
         setAuthor(post.author);
         setContent(post.content);
       })
       .catch((err: unknown) => {
-        if (!cancelled) {
+        if (requestedIdRef.current === id) {
           setLoadError(err instanceof Error ? err.message : "게시글을 불러오지 못했습니다");
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (requestedIdRef.current === id) setLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
   }, [id]);
 
   async function handleSubmit(event: FormEvent): Promise<void> {
